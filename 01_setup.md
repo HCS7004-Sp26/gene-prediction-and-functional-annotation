@@ -38,7 +38,7 @@ access to the shared Funannotate2 resources pre-installed for this class.
 
 ```bash
 # Replace "myusername" with your actual OSC username
-export user_name=myusername
+export user_name=Jonathan
 
 # Verify
 echo "user_name = ${user_name}"
@@ -231,13 +231,13 @@ apptainer pull \
 
 # ---- InterProScan (protein domain annotation) ----
 apptainer pull \
-  ${CONTAINERS}/interproscan_5.72.sif \
-  oras://community.wave.seqera.io/library/interproscan:5.72-103.0--hec16e2b_0
+  ${CONTAINERS}/interproscan_5.73.sif \
+  docker://quay.io/nf-core/interproscan:5.73-104.0
 
 # ---- EggNOG-mapper (orthology-based functional annotation) ----
 apptainer pull \
-  ${CONTAINERS}/eggnog_mapper_2.1.12.sif \
-  oras://community.wave.seqera.io/library/eggnog-mapper:2.1.12--pyhdfd78af_0
+  ${CONTAINERS}/eggnog_mapper_2.1.13.sif \
+  oras://community.wave.seqera.io/library/eggnog-mapper:2.1.13--3707cb2d1fc34e7a
 
 echo ""
 echo "=== All utility containers pulled ==="
@@ -278,19 +278,19 @@ apptainer exec ${CONTAINERS}/sratools_3.2.1.sif \
 
 echo -n "trimmomatic:    "
 apptainer exec ${CONTAINERS}/trimmomatic_0.40.sif \
-  trimmomatic -version 2>&1 | head -1
+  trimmomatic -version 2>&1 | head -2 | tail -1
 
 echo -n "fastqc:         "
 apptainer exec ${CONTAINERS}/fastqc_0.12.1.sif \
-  fastqc --version 2>&1 | head -1
+  fastqc --version 2>&1 | head -2 | tail -1
 
 echo -n "interproscan:   "
-apptainer exec ${CONTAINERS}/interproscan_5.72.sif \
+apptainer exec ${CONTAINERS}/interproscan_5.73.sif \
   interproscan.sh --version 2>&1 | grep "InterProScan" | head -1
 
 echo -n "eggnog-mapper:  "
-apptainer exec ${CONTAINERS}/eggnog_mapper_2.1.12.sif \
-  emapper.py --version 2>&1 | head -1
+apptainer exec ${CONTAINERS}/eggnog_mapper_2.1.13.sif \
+  emapper.py --version 2>&1 | head -4 | tail -1
 
 echo ""
 echo "Verification complete."
@@ -298,7 +298,7 @@ echo "Verification complete."
 
 ---
 
-## Step 9: Set Up the EggNOG-mapper Database
+## Step 9: Set Up the EggNOG-mapper Database (url invalid, and step not needed since databases are installed in Team Project)
 
 The EggNOG-mapper reference database (~9 GB) is not shared because each
 student needs read-write access during mapping. Download it once to your
@@ -325,7 +325,7 @@ EGGNOG_DB=/fs/scratch/PAS3260/${user_name}/Annotation/eggnog_db
 
 apptainer exec \
   --bind ${EGGNOG_DB}:/eggnog_db \
-  ${CONTAINERS}/eggnog_mapper_2.1.12.sif \
+  ${CONTAINERS}/eggnog_mapper_2.1.13.sif \
   download_eggnog_data.py \
     --data_dir /eggnog_db \
     -y
