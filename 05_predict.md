@@ -37,55 +37,21 @@ Evidence Modeler assigns different weights to each evidence type:
 
 ---
 
-## Step 1: Obtain Fungal Protein Evidence
+## Step 1: Verify the protein file exist
 
-Funannotate2's prediction step accepts a set of reference proteins (`-ps`)
-to guide gene model refinement via miniprot alignment. We extract the
-curated fungal protein set from the shared Funannotate2 database:
-
+# Verify the protein evidence file is present in the shared database
 ```bash
-cat > ${ANNOT}/scripts/05a_get_proteins.sh << 'EOF'
-#!/bin/bash
-#SBATCH --account=PAS3260
-#SBATCH --job-name=get_proteins
-#SBATCH --output=logs/get_proteins_%j.out
-#SBATCH --error=logs/get_proteins_%j.err
-#SBATCH --time=00:30:00
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=2
-#SBATCH --mem=8G
-
-set -euo pipefail
-
-ANNOT=/fs/scratch/PAS3260/${user_name}/Annotation
-SHARED_F2=/fs/scratch/PAS3260/Team_Project/Containers/Funannotate2
-F2_CONTAINER=${SHARED_F2}/funannotate2.sif
-F2_DB=${SHARED_F2}/databases
-AUGUSTUS_CONFIG=${ANNOT}/augustus_config
-
-apptainer exec \
-  --bind ${ANNOT}:/data \
-  --bind ${F2_DB}:/f2_db \
-  --bind ${AUGUSTUS_CONFIG}:/opt/augustus_config \
-  --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
-  --bind ${SHARED_F2}/signalp-6-package:/signalp-6-package \
-  --env AUGUSTUS_CONFIG_PATH=/opt/augustus_config \
-  ${F2_CONTAINER} \
-  funannotate2 db \
-    --export uniprot_fungi \
-    --output /data/00_genome/uniprot_fungi.fasta \
-    --database /f2_db
-
-echo "Protein evidence FASTA:"
-grep -c "^>" ${ANNOT}/00_genome/uniprot_fungi.fasta
-echo "sequences"
-ls -lh ${ANNOT}/00_genome/uniprot_fungi.fasta
-EOF
-
-cd ${ANNOT}
-sbatch ${ANNOT}/scripts/05a_get_proteins.sh
+ls -lh /fs/scratch/PAS3260/Team_Project/Containers/Funannotate2/databases/uniprot_sprot.fasta
+grep -c "^>" /fs/scratch/PAS3260/Team_Project/Containers/Funannotate2/databases/uniprot_sprot.fasta
+echo "UniProt/Swiss-Prot sequences available as protein evidence"
 ```
 
+# Verify transcript evidence from Module 4b is present
+```bash
+ls -lh ${ANNOT}/01_rnaseq/transcripts/Pf_transcripts.fasta
+grep -c "^>" ${ANNOT}/01_rnaseq/transcripts/Pf_transcripts.fasta
+echo "StringTie transcript sequences available"
+```
 ---
 
 ## Step 2: Run funannotate2 predict
@@ -104,6 +70,8 @@ cat > ${ANNOT}/scripts/05b_f2_predict.sh << 'EOF'
 
 set -euo pipefail
 
+user_name=Jonathan
+
 ANNOT=/fs/scratch/PAS3260/${user_name}/Annotation
 SHARED_F2=/fs/scratch/PAS3260/Team_Project/Containers/Funannotate2
 F2_CONTAINER=${SHARED_F2}/funannotate2.sif
@@ -115,17 +83,19 @@ apptainer exec \
   --bind ${F2_DB}:/f2_db \
   --bind ${AUGUSTUS_CONFIG}:/opt/augustus_config \
   --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
-  --bind ${SHARED_F2}/signalp-6-package:/signalp-6-package \
   --env AUGUSTUS_CONFIG_PATH=/opt/augustus_config \
+  --env FUNANNOTATE2_DB=/f2_db \
   ${F2_CONTAINER} \
   funannotate2 predict \
     -i /data/02_funannotate \
     -s "Peltaster fructicola" \
     --strain LNHT1506 \
-    --ps /data/00_genome/uniprot_fungi.fasta \
-    --database /f2_db \
-    --busco_db dothideomycetes_odb12 \
-    --organism fungi \
+    --bam /data/01_rnaseq/transcripts/Pf_rnaseq.bam \
+    --bam-library RF \
+    -ps /f2_db/uniprot_sprot.fasta \
+    -ts /data/01_rnaseq/transcripts/Pf_transcripts.fasta \
+    --min-intron 40 \
+    --locus-tag PELF \
     --cpus 16
 
 echo "=== funannotate2 predict complete: $(date) ==="
@@ -142,14 +112,17 @@ squeue -u ${USER}
 **Key parameters:**
 
 | Parameter | Value | Purpose |
-|-----------|-------|---------|
-| `-i` | `02_funannotate` | Input directory (from `train`) |
-| `-s` | `"Peltaster fructicola"` | Species name |
-| `--ps` | `uniprot_fungi.fasta` | Protein evidence for miniprot alignment |
-| `--database` | `/f2_db` | Funannotate2 annotation databases |
-| `--busco_db` | `dothideomycetes_odb12` | BUSCO set for completeness assessment |
-| `--organism` | `fungi` | Sets EVM weights appropriate for fungi |
-
+|---|---|---|
+| `-i` | `02_funannotate` | Input/output directory from `train` |
+| `-s` | `"Peltaster fructicola"` | Species name for locus tags and output naming |
+| `--strain` | `LNHT1506` | Strain identifier |
+| `--locus-tag` | `PELF` | Species-specific locus tag prefix; required unique for NCBI submission |
+| `--bam` | `Pf_rnaseq.bam` | Coordinate-sorted RNA-seq BAM from Module 4b for splice hints and UTR refinement |
+| `--bam-library` | `RF` | dUTP/reverse-stranded library orientation (provisional — verify with RSeQC if needed) |
+| `-ps` | `uniprot_sprot.fasta` | UniProt/Swiss-Prot proteins for miniprot cross-species homology alignment |
+| `-ts` | `Pf_transcripts.fasta` | StringTie transcripts from Module 4b for same-species exon boundary evidence |
+| `--min-intron` | `40` | Excludes spurious very short intron calls inconsistent with *P. fructicola*'s 50 bp median intron |
+| `--cpus` | `16` | Parallel threads for ab initio predictors and alignment steps |
 ---
 
 ## Step 3: Inspect Prediction Output
@@ -231,26 +204,24 @@ cat > ${ANNOT}/scripts/05c_busco_predict.sh << 'EOF'
 
 set -euo pipefail
 
+user_name=${USER}
+
+CONTAINERS=/fs/scratch/PAS3260/${user_name}/Annotation/containers
 ANNOT=/fs/scratch/PAS3260/${user_name}/Annotation
-SHARED_F2=/fs/scratch/PAS3260/Team_Project/Containers/Funannotate2
-F2_CONTAINER=${SHARED_F2}/funannotate2.sif
-F2_DB=${SHARED_F2}/databases
-AUGUSTUS_CONFIG=${ANNOT}/augustus_config
-BUSCO_DL=/fs/scratch/PAS3260/${user_name}/Peltaster/busco_downloads
+BUSCO_DL=${ANNOT}/busco_downloads
+
+OUTDIR=${ANNOT}/02_funannotate/busco_predict
+mkdir -p ${OUTDIR}
+mkdir -p ${BUSCO_DL}
+cd ${OUTDIR}
 
 PROTEINS=$(ls ${ANNOT}/02_funannotate/predict_results/*.proteins.fa | head -1)
-mkdir -p ${ANNOT}/02_funannotate/busco_predict
-cd ${ANNOT}/02_funannotate/busco_predict
+echo "Running BUSCO on: ${PROTEINS}"
 
 apptainer exec \
   --bind ${ANNOT}:/data \
-  --bind ${F2_DB}:/f2_db \
-  --bind ${AUGUSTUS_CONFIG}:/opt/augustus_config \
-  --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
-  --bind ${SHARED_F2}/signalp-6-package:/signalp-6-package \
   --bind ${BUSCO_DL}:/busco_downloads \
-  --env AUGUSTUS_CONFIG_PATH=/opt/augustus_config \
-  ${F2_CONTAINER} \
+  ${CONTAINERS}/busco_6.0.0.sif \
   busco \
     --in /data/02_funannotate/predict_results/$(basename ${PROTEINS}) \
     --out Pf_predict_proteins_busco \
@@ -260,8 +231,8 @@ apptainer exec \
     --cpu 12 \
     --force
 
-echo "=== BUSCO of predicted proteins ==="
-cat ${ANNOT}/02_funannotate/busco_predict/Pf_predict_proteins_busco/short_summary*.txt
+echo "=== BUSCO of predicted proteins complete: $(date) ==="
+cat ${OUTDIR}/Pf_predict_proteins_busco/short_summary*.txt
 EOF
 
 cd ${ANNOT}

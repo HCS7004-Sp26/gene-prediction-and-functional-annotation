@@ -231,7 +231,6 @@ apptainer exec \
   RepeatMasker \
     -pa 12 \
     -xsmall \
-    -species fungi \
     -lib /data/00_genome/repeat_masking/Pf_db-families.fa \
     -dir /data/00_genome/repeat_masking \
     /data/00_genome/Pf_assembly_cleaned.fasta

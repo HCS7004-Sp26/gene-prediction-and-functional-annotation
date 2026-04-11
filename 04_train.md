@@ -87,21 +87,108 @@ ls -lh ${ANNOT}/01_rnaseq/all_samples_R*.fastq.gz
 # Quick count check
 echo "R1 reads:"
 zcat ${ANNOT}/01_rnaseq/all_samples_R1.fastq.gz | wc -l | awk '{print $1/4}'
+echo "R2 reads:"
+zcat ${ANNOT}/01_rnaseq/all_samples_R2.fastq.gz | wc -l | awk '{print $1/4}'
 
 # Confirm augustus_config is writable in your directory
 ls -la ${ANNOT}/augustus_config/
 ```
 
 ---
+## Step 2: Run transcriptome assembly
+```bash
+cat > ${ANNOT}/scripts/04a_transcript_assembly.sh << 'EOF'
+#!/bin/bash
+#SBATCH --account=PAS3260
+#SBATCH --job-name=transcript_assembly
+#SBATCH --output=logs/transcript_assembly_%j.out
+#SBATCH --error=logs/transcript_assembly_%j.err
+#SBATCH --time=01:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=16
+#SBATCH --mem=64G
 
-## Step 2: Run funannotate2 train
+set -euo pipefail
+
+user_name=Jonathan
+
+CONTAINERS=/fs/scratch/PAS3260/${user_name}/Annotation/containers
+ANNOT=/fs/scratch/PAS3260/${user_name}/Annotation
+GENOME=${ANNOT}/00_genome/Pf_assembly_softmasked.fasta
+R1=${ANNOT}/01_rnaseq/all_samples_R1.fastq.gz
+R2=${ANNOT}/01_rnaseq/all_samples_R2.fastq.gz
+OUTDIR=${ANNOT}/01_rnaseq/transcripts
+mkdir -p ${OUTDIR}
+
+# --- Step 1: Build HISAT2 genome index ---
+echo "=== Building HISAT2 index: $(date) ==="
+apptainer exec \
+  --bind ${ANNOT}:/data \
+  ${CONTAINERS}/hisat2_2.2.2.sif \
+  hisat2-build \
+    -p 16 \
+    /data/00_genome/Pf_assembly_softmasked.fasta \
+    /data/01_rnaseq/transcripts/Pf_genome
+
+# --- Step 2: Align merged reads ---
+echo "=== HISAT2 alignment: $(date) ==="
+apptainer exec \
+  --bind ${ANNOT}:/data \
+  ${CONTAINERS}/hisat2_2.2.2.sif \
+  bash -c "hisat2 \
+    -p 16 \
+    --rna-strandness RF \
+    -x /data/01_rnaseq/transcripts/Pf_genome \
+    -1 /data/01_rnaseq/all_samples_R1.fastq.gz \
+    -2 /data/01_rnaseq/all_samples_R2.fastq.gz \
+    --dta \
+    2>/data/01_rnaseq/transcripts/hisat2_summary.txt \
+  | samtools sort -@ 16 -o /data/01_rnaseq/transcripts/Pf_rnaseq.bam \
+  && samtools index /data/01_rnaseq/transcripts/Pf_rnaseq.bam"
+
+echo "=== HISAT2 alignment rate ==="
+grep "overall alignment rate" ${OUTDIR}/hisat2_summary.txt
+
+# --- Step 3: Assemble transcripts with StringTie ---
+echo "=== StringTie assembly: $(date) ==="
+apptainer exec \
+  --bind ${ANNOT}:/data \
+  ${CONTAINERS}/stringtie_3.0.3.sif \
+  stringtie \
+    /data/01_rnaseq/transcripts/Pf_rnaseq.bam \
+    --rf \
+    -p 16 \
+    -o /data/01_rnaseq/transcripts/Pf_transcripts.gtf
+
+# --- Step 4: Extract transcript sequences with gffread ---
+echo "=== gffread: extracting transcript FASTA: $(date) ==="
+apptainer exec \
+  --bind ${ANNOT}:/data \
+  ${CONTAINERS}/gffread_0.12.7.sif \
+  gffread \
+    /data/01_rnaseq/transcripts/Pf_transcripts.gtf \
+    -g /data/00_genome/Pf_assembly_softmasked.fasta \
+    -w /data/01_rnaseq/transcripts/Pf_transcripts.fasta
+
+echo "=== Transcript assembly complete: $(date) ==="
+echo "Transcript count:"
+grep -c "^>" ${OUTDIR}/Pf_transcripts.fasta
+ls -lh ${OUTDIR}/Pf_transcripts.fasta
+EOF
+
+cd ${ANNOT}
+sbatch ${ANNOT}/scripts/04a_transcript_assembly.sh
+squeue -u ${USER}
+```
+
+## Step 3: Run funannotate2 train
 
 This is the most computationally intensive step in the annotation pipeline.
 Expect **2–4 hours** for a 19 Mb fungal genome with 15 RNA-seq samples
 using 16 CPUs.
 
 ```bash
-cat > ${ANNOT}/scripts/04a_f2_train.sh << 'EOF'
+cat > ${ANNOT}/scripts/04b_f2_train.sh << 'EOF'
 #!/bin/bash
 #SBATCH --account=PAS3260
 #SBATCH --job-name=f2_train
@@ -114,6 +201,8 @@ cat > ${ANNOT}/scripts/04a_f2_train.sh << 'EOF'
 
 set -euo pipefail
 
+user_name=Jonathan
+
 ANNOT=/fs/scratch/PAS3260/${user_name}/Annotation
 SHARED_F2=/fs/scratch/PAS3260/Team_Project/Containers/Funannotate2
 F2_CONTAINER=${SHARED_F2}/funannotate2.sif
@@ -125,27 +214,24 @@ apptainer exec \
   --bind ${F2_DB}:/f2_db \
   --bind ${AUGUSTUS_CONFIG}:/opt/augustus_config \
   --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
-  --bind ${SHARED_F2}/signalp-6-package:/signalp-6-package \
   --env AUGUSTUS_CONFIG_PATH=/opt/augustus_config \
+  --env FUNANNOTATE2_DB=/f2_db \
   ${F2_CONTAINER} \
   funannotate2 train \
     -f /data/00_genome/Pf_assembly_softmasked.fasta \
     -s "Peltaster fructicola" \
     --strain LNHT1506 \
     -o /data/02_funannotate \
-    --left  /data/01_rnaseq/all_samples_R1.fastq.gz \
-    --right /data/01_rnaseq/all_samples_R2.fastq.gz \
-    --stranded RF \
-    --database /f2_db \
-    --busco_db dothideomycetes_odb12 \
+    --busco-lineage dothideomycetes \
+    --genemark-mode guided \
     --cpus 16
 
 echo "=== funannotate2 train complete: $(date) ==="
+ls -lh ${ANNOT}/02_funannotate/
 EOF
 
 cd ${ANNOT}
-sbatch ${ANNOT}/scripts/04a_f2_train.sh
-squeue -u ${USER}
+sbatch ${ANNOT}/scripts/04b_f2_train.sh
 ```
 
 **Key parameters:**
@@ -156,9 +242,8 @@ squeue -u ${USER}
 | `-s` | `"Peltaster fructicola"` | Species name used in locus tags |
 | `--strain` | `LNHT1506` | Strain identifier |
 | `-o` | `02_funannotate` | Output directory (used by all Funannotate2 stages) |
-| `--left / --right` | merged R1/R2 | Paired-end RNA-seq reads |
-| `--stranded RF` | `RF` | dUTP library strand orientation (reverse-forward) |
-| `--busco_db` | `dothideomycetes_odb12` | BUSCO lineage for training set construction |
+| `--busco-lineage` | `dothideomycetes` | BUSCO lineage for training set construction |
+| `--genemark-mode` | `guided` | GeneMark training mode: guided (full+hints) |
 
 > **Strandedness note:** Most Illumina libraries prepared with the dUTP
 > method (TruSeq Stranded kits) are **RF** stranded. If you are unsure,
@@ -172,9 +257,6 @@ squeue -u ${USER}
 ```bash
 # Check job status
 squeue -u ${USER}
-
-# Follow the log in real time (once the job starts)
-tail -f ${ANNOT}/logs/f2_train_*.out
 ```
 
 **Expected stages in the log:**
@@ -182,8 +264,6 @@ tail -f ${ANNOT}/logs/f2_train_*.out
 ```
 [INFO] Running BUSCOlite to identify training loci...
 [INFO] Found N complete BUSCO loci for training
-[INFO] Aligning RNA-seq reads with HISAT2...
-[INFO] Assembling transcripts with StringTie...
 [INFO] Training Augustus...
 [INFO] Training SNAP...
 [INFO] Training GlimmerHMM...
@@ -201,7 +281,7 @@ tail -f ${ANNOT}/logs/f2_train_*.out
 ls -la ${ANNOT}/02_funannotate/
 
 # The key output — stored training parameters for predict
-ls -lh ${ANNOT}/02_funannotate/params.json
+ls -lh ${ANNOT}/02_funannotate/train_results/*params.json
 
 # Verify params.json is valid and contains expected fields
 apptainer exec \
@@ -214,7 +294,7 @@ apptainer exec \
   ${F2_CONTAINER} \
   python3 -c "
 import json
-with open('/data/02_funannotate/params.json') as f:
+with open('${ANNOT}/02_funannotate/train_results/Peltaster_fructicola_LNHT1506.params.json') as f:
     params = json.load(f)
 print('Keys:', list(params.keys()))
 print('Species:', params.get('species', 'not found'))

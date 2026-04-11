@@ -229,6 +229,27 @@ apptainer pull \
   ${CONTAINERS}/fastqc_0.12.1.sif \
   oras://community.wave.seqera.io/library/fastqc:0.12.1--104d26ddd9519960
 
+# ---- HISAT2 (Hirarchical Indexing for Spliced Alignment of Transcripts) ----
+# ---- should include samtools 
+apptainer pull \
+  ${CONTAINERS}/hisat2_2.2.2.sif \
+  oras://community.wave.seqera.io/library/hisat2_samtools:7187f9e84cdad061
+
+# ---- StringTie (trasncriptome structure recovery and abudance estimation) ----
+apptainer pull \
+  ${CONTAINERS}/stringtie_3.0.3.sif \
+  oras://community.wave.seqera.io/library/stringtie:3.0.3--5970e7d4cfb4e671
+
+# ---- gffread (validation, filtering, conversions, and varios operations on GFF files) ----
+apptainer pull \
+  ${CONTAINERS}/gffread_0.12.7.sif \
+  oras://community.wave.seqera.io/library/gffread:0.12.7--b08e770b84a4a126
+
+# ---- BUSCO (Benchmarking Universal Single-Copy Orthologs) ----
+apptainer pull \
+  ${CONTAINERS}/busco_6.0.0.sif \
+  oras://community.wave.seqera.io/library/busco:6.0.0--7def4b2c35a1aed1
+
 # ---- InterProScan (protein domain annotation) ----
 apptainer pull \
   ${CONTAINERS}/interproscan_5.73.sif \
@@ -284,6 +305,22 @@ echo -n "fastqc:         "
 apptainer exec ${CONTAINERS}/fastqc_0.12.1.sif \
   fastqc --version 2>&1 | head -2 | tail -1
 
+echo -n "HISAT2:         "
+apptainer exec ${CONTAINERS}/hisat2_2.2.2.sif \
+  hisat2 --version 2>&1 | head -2 | tail -1
+
+echo -n "StringTie:         "
+apptainer exec ${CONTAINERS}/stringtie_3.0.3.sif  \
+  stringtie --version 2>&1 | head -2 | tail -1
+
+echo -n "gffread:         "
+apptainer exec ${CONTAINERS}/gffread_0.12.7.sif  \
+  gffread --version 2>&1 | head -2 | tail -1
+
+echo -n "BUSCO:         "
+apptainer exec ${CONTAINERS}/busco_6.0.0.sif  \
+  busco --version 2>&1 | head -2 | tail -1
+
 echo -n "interproscan:   "
 apptainer exec ${CONTAINERS}/interproscan_5.73.sif \
   interproscan.sh --version 2>&1 | grep "InterProScan" | head -1
@@ -298,7 +335,7 @@ echo "Verification complete."
 
 ---
 
-## Step 9: Set Up the EggNOG-mapper Database (url invalid, and step not needed since databases are installed in Team Project)
+## NO LONGER NEEDED: Step 9: Set Up the EggNOG-mapper Database (url invalid, and step not needed since databases are installed in Team Project)
 
 The EggNOG-mapper reference database (~9 GB) is not shared because each
 student needs read-write access during mapping. Download it once to your
