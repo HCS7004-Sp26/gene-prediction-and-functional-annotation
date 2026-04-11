@@ -152,7 +152,6 @@ for ACC in $(cat ${ANNOT}/01_rnaseq/SRP166999_accessions.txt); do
   fi
 done
 ```
-
 ---
 
 ## Step 3: Adapter Trimming — SLURM Array

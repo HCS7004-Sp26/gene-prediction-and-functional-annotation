@@ -32,7 +32,7 @@ workflow.
 |--------|------|--------|----------|
 | 0 | `00_overview.md` | Introduction & pipeline overview | — |
 | 1 | `01_setup.md` | **Directory structure, containers, and shared resources** | 30 min |
-| 2 | `02_rnaseq_evidence.md` | Downloading all RNA-seq evidence (SRP166999) | 30 min |
+| 2 | `02_rnaseq_evidence.md` | Downloading and trimming RNA-seq evidence (SRP166999) | 30 min |
 | 3 | `03_genome_clean.md` | Genome cleaning and repeat masking | 30 min |
 | 4 | `04_train.md` | Training ab initio gene predictors | 60 min |
 | 5 | `05_predict.md` | Gene prediction with Evidence Modeler | 90 min |
@@ -40,9 +40,9 @@ workflow.
 
 > **Total active work:** ~5–6 hours + SLURM queue time.
 > All bioinformatics tools run through **Apptainer containers**.
-> The Funannotate2 container and its databases are pre-installed in a
-> shared class directory. Students pull the remaining utility containers
-> to their own space in Module 1.
+> The Funannotate2, InterProScan, and EggNOG-mapper containers and their
+> databases are pre-installed in a shared class directory. Students pull
+> the remaining utility containers to their own space in Module 1.
 
 ---
 
@@ -76,7 +76,7 @@ single consensus gene model set using **Evidence Modeler (EVM)**:
              ┌─────────────────────────┼─────────────────────────┐
              ▼                         ▼                         ▼
    Ab initio prediction       RNA-seq transcripts        Protein homology
-   (Augustus, SNAP,           (all 15 conditions         (UniProt fungi,
+   (Augustus, SNAP,           (3 conditions              (UniProt fungi,
     GlimmerHMM, GeneMark)      from SRP166999)            related species)
              └─────────────────────────┼─────────────────────────┘
                                        ▼
@@ -107,17 +107,25 @@ Each evidence type compensates for the weaknesses of the others:
 
 ## Shared Resources for This Tutorial
 
-The Funannotate2 container, annotation databases, GeneMark-ES, and SignalP 6
-are pre-installed in a shared class directory and do **not** need to be
-downloaded by individual students:
+The Funannotate2, InterProScan, and EggNOG-mapper containers and their
+databases are pre-installed in a shared class directory and do **not** need
+to be downloaded by individual students:
 
 ```
-/fs/scratch/PAS3260/Team_Project/Containers/Funannotate2/
-├── funannotate2.sif        ← Funannotate2 Apptainer container
-├── databases/              ← Pfam, dbCAN, UniProt, MEROPS, gene names
-├── augustus_config/        ← Augustus species models (read-only master copy)
-├── gmes_linux_64_4/        ← GeneMark-ES (licensed, pre-installed)
-└── signalp-6-package/      ← SignalP 6 (licensed, pre-installed)
+/fs/scratch/PAS3260/Team_Project/Containers/
+├── Funannotate2/
+│   ├── funannotate2.sif     ← Funannotate2 container (SignalP 6 baked in)
+│   ├── databases/              ← Pfam, dbCAN, UniProt, MEROPS, BUSCO lineages
+│   ├── augustus_config/        ← Augustus species models (read-only master copy)
+│   ├── gmes_linux_64_4/        ← GeneMark-ES (licensed, bound at runtime)
+│   └── signalp-6-package/      ← SignalP 6 source (weights baked into container)
+├── InterProScan/
+│   ├── interproscan_5.77-108.0.sif
+│   ├── interproscan.properties ← pre-configured for this cluster
+│   └── data/                   ← all 17 member databases
+└── eggNOG/
+    ├── eggnog_mapper_2.1.13.sif
+    └── eggnog_db/              ← eggNOG5 reference database
 ```
 
 Each student copies `augustus_config` to their own working directory
@@ -131,22 +139,29 @@ All other shared resources are accessed read-only via bind mounts.
 | Data | Source | Location |
 |------|--------|----------|
 | Genome assembly | GCA_001592805.2 | From previous tutorial |
-| RNA-seq (15 runs) | SRP166999 (Wang et al. 2020) | Downloaded in Module 2 |
+| RNA-seq (3 runs) | SRP166999 (Wang et al. 2020) | Downloaded in Module 2 |
 
-The RNA-seq dataset covers five growth conditions in triplicate:
+The RNA-seq dataset covers three growth conditions with no biological
+replicates:
 
-| Condition | Replicates | SRR accessions |
-|-----------|-----------|----------------|
-| Potato dextrose broth, 5 days (PDB-5d) | 3 | SRR8119502–SRR8119504 |
-| Potato dextrose broth, 15 days (PDB-15d) | 3 | SRR8119505–SRR8119507 |
-| PDB + PEG 6000 osmotic stress, 15 days | 3 | SRR8119508–SRR8119510 |
-| Potato dextrose agar (solid), 15 days | 3 | SRR8119511–SRR8119513 |
-| Apple fruit inoculation, 15 days | 3 | SRR8119514–SRR8119516 |
+| Condition | SRR accession | Approx. size |
+|-----------|--------------|-------------|
+| Potato dextrose (PD), 5 days | SRR8115198 | ~1.4 Gb |
+| Potato dextrose (PD), 15 days | SRR8115199 | ~1.3 Gb |
+| PD + PEG 6000 (osmotic stress), 15 days | SRR8115200 | ~1.3 Gb |
 
-> **Why use all 15 samples for annotation?** Gene models inferred from
-> a single growth condition are biased toward genes expressed under that
-> condition. Providing transcripts from all five conditions maximizes the
-> number of gene models supported by direct RNA-seq evidence, reducing
+> **Study design note:** This dataset has **no biological replicates** —
+> one RNA-seq library was generated per condition. This is acceptable for
+> providing transcript evidence to a gene predictor (which only needs to
+> detect expressed exon boundaries), but it means the data **cannot be
+> used for differential expression analysis**. Statistical tests of
+> differential expression require replicates to estimate within-condition
+> variance. See Module 2 for further discussion.
+
+> **Why use all three conditions for annotation?** Gene models inferred
+> from a single growth condition are biased toward genes expressed under
+> that condition. Providing transcripts from all three conditions maximizes
+> the number of gene models supported by direct RNA-seq evidence, reducing
 > both false positives and false negatives in the final gene set.
 
 ---
@@ -164,10 +179,10 @@ Before starting Module 1, consider the following with your group:
    these features to affect the performance of ab initio predictors trained
    on larger-intron organisms like *Aspergillus* or *Neurospora*?
 
-3. You have RNA-seq evidence from five growth conditions. Would you expect
-   the set of expressed genes to differ among conditions? What categories of
-   genes might be condition-specific, and how would this affect the annotation
-   if you used only a single condition?
+3. You have RNA-seq evidence from three growth conditions with no replicates.
+   Would you expect the set of expressed genes to differ among conditions?
+   What categories of genes might be condition-specific, and how would this
+   affect the annotation if you used only a single condition?
 
 ---
 

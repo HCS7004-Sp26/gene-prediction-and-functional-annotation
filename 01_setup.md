@@ -78,7 +78,7 @@ ls -lh ${SHARED_F2}/
 # databases/
 # augustus_config/
 # gmes_linux_64_4/
-# signalp-6-package/
+# signalp-6-package/   ← source files; SignalP 6 weights are baked into the container
 
 ls -lh ${SHARED_IPS}/
 # Expected output:
@@ -162,7 +162,7 @@ cp -r ${SHARED_F2}/augustus_config ${ANNOT}/augustus_config
 
 echo "augustus_config copied."
 ls ${ANNOT}/augustus_config/
-# Should contain: config/  extrinsic/  model/  profile/  species/
+# Should contain: cgp/  extrinsic/  model/  parameters/  profile/  species/
 ```
 
 > **Why this matters:** During `funannotate2 train`, Augustus saves the
@@ -295,8 +295,9 @@ echo "=== Shared Funannotate2 container ==="
 echo -n "funannotate2:        "
 apptainer exec \
   --bind ${F2_DB}:/f2_db \
-  --bind ${AUGUSTUS_CONFIG}:/opt/augustus_config \
-  --env AUGUSTUS_CONFIG_PATH=/opt/augustus_config \
+  --bind ${AUGUSTUS_CONFIG}:/opt/augustus/config \
+  --env AUGUSTUS_CONFIG_PATH=/opt/augustus/config \
+  --env FUNANNOTATE2_DB=/f2_db \
   ${F2_CONTAINER} \
   funannotate2 --version 2>&1 | head -1
 
@@ -361,11 +362,11 @@ students. **No download is required for any of these.**
 ```
 /fs/scratch/PAS3260/Team_Project/Containers/
 ├── Funannotate2/
-│   ├── funannotate2.sif        ← main annotation container
+│   ├── funannotate2.sif     ← main annotation container (SignalP 6 baked in)
 │   ├── databases/              ← Pfam, dbCAN, UniProt, MEROPS, BUSCO lineages
 │   ├── augustus_config/        ← source for your personal writable copy
-│   ├── gmes_linux_64_4/        ← GeneMark-ES (licensed)
-│   └── signalp-6-package/      ← SignalP 6 (licensed)
+│   ├── gmes_linux_64_4/        ← GeneMark-ES (licensed; bound at runtime)
+│   └── signalp-6-package/      ← SignalP 6 source (weights baked into container)
 ├── InterProScan/
 │   ├── interproscan_5.77-108.0.sif
 │   ├── interproscan.properties ← pre-configured for this cluster
@@ -381,16 +382,17 @@ students. **No download is required for any of these.**
 
 Every Funannotate2 command uses the following bind-mount pattern so the
 container can access the shared databases, your writable `augustus_config`,
-and the licensed tools (GeneMark-ES, SignalP 6):
+and the licensed GeneMark-ES tool:
 
 ```bash
 apptainer exec \
   --bind ${ANNOT}:/data \
   --bind ${F2_DB}:/f2_db \
-  --bind ${AUGUSTUS_CONFIG}:/opt/augustus_config \
+  --bind ${AUGUSTUS_CONFIG}:/opt/augustus/config \
   --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
-  --bind ${SHARED_F2}/signalp-6-package:/signalp-6-package \
-  --env AUGUSTUS_CONFIG_PATH=/opt/augustus_config \
+  --bind ~/.gm_key:/root/.gm_key \
+  --env AUGUSTUS_CONFIG_PATH=/opt/augustus/config \
+  --env FUNANNOTATE2_DB=/f2_db \
   ${F2_CONTAINER} \
   funannotate2 <command> ...
 ```
@@ -399,13 +401,15 @@ apptainer exec \
 |-----------|---------|
 | `${ANNOT}:/data` | Your project data, accessible as `/data` inside container |
 | `${F2_DB}:/f2_db` | Shared annotation databases (Pfam, dbCAN, UniProt, MEROPS) |
-| `${AUGUSTUS_CONFIG}:/opt/augustus_config` | Your writable Augustus config |
-| `gmes_linux_64_4:/gmes_linux_64_4` | GeneMark-ES binary (requires license) |
-| `signalp-6-package:/signalp-6-package` | SignalP 6 for secretome prediction |
+| `${AUGUSTUS_CONFIG}:/opt/augustus/config` | Your writable Augustus config |
+| `gmes_linux_64_4:/gmes_linux_64_4` | GeneMark-ES binary (requires license key) |
+| `~/.gm_key:/root/.gm_key` | GeneMark-ES license key |
 
-> This pattern is repeated verbatim in every Funannotate2 script throughout
-> the tutorial. All input/output paths inside container commands start
-> with `/data/`, `/f2_db/`, etc.
+> **SignalP 6** is baked into the container image — no bind-mount is needed.
+> All input/output paths inside container commands start with `/data/`, `/f2_db/`, etc.
+
+> **Steps that do not call GeneMark** (e.g., `clean`, `annotate`) omit the
+> `gmes_linux_64_4` and `.gm_key` binds for clarity.
 
 ---
 
@@ -446,7 +450,7 @@ SHARED_EGGNOG=/fs/scratch/PAS3260/Team_Project/Containers/eggNOG
 - [ ] `echo ${user_name}` prints your OSC username (not empty)
 - [ ] `echo ${ANNOT}` prints `/fs/scratch/PAS3260/<your_username>/Annotation`
 - [ ] `ls ${ANNOT}` shows the full directory tree including `augustus_config/`
-- [ ] `ls ${SHARED_F2}/` lists all five shared Funannotate2 resources
+- [ ] `ls ${SHARED_F2}/` lists `funannotate2.sif`, `databases/`, `augustus_config/`, `gmes_linux_64_4/`
 - [ ] `ls ${SHARED_IPS}/` lists the InterProScan `.sif`, `data/`, and `interproscan.properties`
 - [ ] `ls ${SHARED_EGGNOG}/` lists the EggNOG-mapper `.sif` and `eggnog_db/`
 - [ ] `ls ${ANNOT}/augustus_config/` shows the Augustus configuration files

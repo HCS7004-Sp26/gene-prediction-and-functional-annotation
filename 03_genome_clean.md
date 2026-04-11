@@ -87,6 +87,8 @@ cat > ${ANNOT}/scripts/03a_clean_genome.sh << 'EOF'
 
 set -euo pipefail
 
+user_name=Jonathan
+
 ANNOT=/fs/scratch/PAS3260/${user_name}/Annotation
 SHARED_F2=/fs/scratch/PAS3260/Team_Project/Containers/Funannotate2
 F2_CONTAINER=${SHARED_F2}/funannotate2.sif
@@ -96,10 +98,9 @@ AUGUSTUS_CONFIG=${ANNOT}/augustus_config
 apptainer exec \
   --bind ${ANNOT}:/data \
   --bind ${F2_DB}:/f2_db \
-  --bind ${AUGUSTUS_CONFIG}:/opt/augustus_config \
-  --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
-  --bind ${SHARED_F2}/signalp-6-package:/signalp-6-package \
-  --env AUGUSTUS_CONFIG_PATH=/opt/augustus_config \
+  --bind ${AUGUSTUS_CONFIG}:/opt/augustus/config \
+  --env AUGUSTUS_CONFIG_PATH=/opt/augustus/config \
+  --env FUNANNOTATE2_DB=/f2_db \
   ${F2_CONTAINER} \
   funannotate2 clean \
     -f /data/00_genome/Pf_assembly_raw.fasta \
@@ -188,6 +189,8 @@ cat > ${ANNOT}/scripts/03b_repeat_mask.sh << 'EOF'
 
 set -euo pipefail
 
+user_name=Jonathan
+
 ANNOT=/fs/scratch/PAS3260/${user_name}/Annotation
 SHARED_F2=/fs/scratch/PAS3260/Team_Project/Containers/Funannotate2
 F2_CONTAINER=${SHARED_F2}/funannotate2.sif
@@ -200,10 +203,9 @@ mkdir -p ${ANNOT}/00_genome/repeat_masking
 apptainer exec \
   --bind ${ANNOT}:/data \
   --bind ${F2_DB}:/f2_db \
-  --bind ${AUGUSTUS_CONFIG}:/opt/augustus_config \
-  --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
-  --bind ${SHARED_F2}/signalp-6-package:/signalp-6-package \
-  --env AUGUSTUS_CONFIG_PATH=/opt/augustus_config \
+  --bind ${AUGUSTUS_CONFIG}:/opt/augustus/config \
+  --env AUGUSTUS_CONFIG_PATH=/opt/augustus/config \
+  --env FUNANNOTATE2_DB=/f2_db \
   ${F2_CONTAINER} \
   bash -c "
     cd /data/00_genome/repeat_masking && \
@@ -223,10 +225,9 @@ ls -lh ${ANNOT}/00_genome/repeat_masking/
 apptainer exec \
   --bind ${ANNOT}:/data \
   --bind ${F2_DB}:/f2_db \
-  --bind ${AUGUSTUS_CONFIG}:/opt/augustus_config \
-  --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
-  --bind ${SHARED_F2}/signalp-6-package:/signalp-6-package \
-  --env AUGUSTUS_CONFIG_PATH=/opt/augustus_config \
+  --bind ${AUGUSTUS_CONFIG}:/opt/augustus/config \
+  --env AUGUSTUS_CONFIG_PATH=/opt/augustus/config \
+  --env FUNANNOTATE2_DB=/f2_db \
   ${F2_CONTAINER} \
   RepeatMasker \
     -pa 12 \

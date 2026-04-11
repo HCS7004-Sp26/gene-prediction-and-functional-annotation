@@ -95,7 +95,12 @@ ls -la ${ANNOT}/augustus_config/
 ```
 
 ---
-## Step 2: Run transcriptome assembly
+
+## Step 2: Run Transcript Assembly
+
+Before training, assemble RNA-seq transcripts that will augment the
+training set and later serve as evidence for gene prediction.
+
 ```bash
 cat > ${ANNOT}/scripts/04a_transcript_assembly.sh << 'EOF'
 #!/bin/bash
@@ -181,6 +186,8 @@ sbatch ${ANNOT}/scripts/04a_transcript_assembly.sh
 squeue -u ${USER}
 ```
 
+---
+
 ## Step 3: Run funannotate2 train
 
 This is the most computationally intensive step in the annotation pipeline.
@@ -212,9 +219,10 @@ AUGUSTUS_CONFIG=${ANNOT}/augustus_config
 apptainer exec \
   --bind ${ANNOT}:/data \
   --bind ${F2_DB}:/f2_db \
-  --bind ${AUGUSTUS_CONFIG}:/opt/augustus_config \
+  --bind ${AUGUSTUS_CONFIG}:/opt/augustus/config \
   --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
-  --env AUGUSTUS_CONFIG_PATH=/opt/augustus_config \
+  --bind ~/.gm_key:/root/.gm_key \
+  --env AUGUSTUS_CONFIG_PATH=/opt/augustus/config \
   --env FUNANNOTATE2_DB=/f2_db \
   ${F2_CONTAINER} \
   funannotate2 train \
@@ -252,7 +260,7 @@ sbatch ${ANNOT}/scripts/04b_f2_train.sh
 
 ---
 
-## Step 3: Monitor the Training Job
+## Step 4: Monitor the Training Job
 
 ```bash
 # Check job status
@@ -274,7 +282,7 @@ squeue -u ${USER}
 
 ---
 
-## Step 4: Inspect the Training Output
+## Step 5: Inspect the Training Output
 
 ```bash
 # Output directory structure
@@ -287,10 +295,11 @@ ls -lh ${ANNOT}/02_funannotate/train_results/*params.json
 apptainer exec \
   --bind ${ANNOT}:/data \
   --bind ${F2_DB}:/f2_db \
-  --bind ${AUGUSTUS_CONFIG}:/opt/augustus_config \
+  --bind ${AUGUSTUS_CONFIG}:/opt/augustus/config \
   --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
-  --bind ${SHARED_F2}/signalp-6-package:/signalp-6-package \
-  --env AUGUSTUS_CONFIG_PATH=/opt/augustus_config \
+  --bind ~/.gm_key:/root/.gm_key \
+  --env AUGUSTUS_CONFIG_PATH=/opt/augustus/config \
+  --env FUNANNOTATE2_DB=/f2_db \
   ${F2_CONTAINER} \
   python3 -c "
 import json
@@ -314,7 +323,7 @@ print('Training loci used:', params.get('training_set', {}).get('n_loci', 'not f
 
 ---
 
-## Step 5: Review the HISAT2 Alignment Summary
+## Step 6: Review the HISAT2 Alignment Summary
 
 ```bash
 # Find and print the HISAT2 summary from training

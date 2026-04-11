@@ -37,21 +37,25 @@ Evidence Modeler assigns different weights to each evidence type:
 
 ---
 
-## Step 1: Verify the protein file exist
+## Step 1: Verify Inputs
 
-# Verify the protein evidence file is present in the shared database
+Confirm that the required evidence files are in place before submitting
+the prediction job.
+
 ```bash
+# Verify the protein evidence file is present in the shared database
 ls -lh /fs/scratch/PAS3260/Team_Project/Containers/Funannotate2/databases/uniprot_sprot.fasta
 grep -c "^>" /fs/scratch/PAS3260/Team_Project/Containers/Funannotate2/databases/uniprot_sprot.fasta
 echo "UniProt/Swiss-Prot sequences available as protein evidence"
 ```
 
-# Verify transcript evidence from Module 4b is present
 ```bash
+# Verify transcript evidence from Module 4 Step 2 is present
 ls -lh ${ANNOT}/01_rnaseq/transcripts/Pf_transcripts.fasta
 grep -c "^>" ${ANNOT}/01_rnaseq/transcripts/Pf_transcripts.fasta
 echo "StringTie transcript sequences available"
 ```
+
 ---
 
 ## Step 2: Run funannotate2 predict
@@ -81,9 +85,10 @@ AUGUSTUS_CONFIG=${ANNOT}/augustus_config
 apptainer exec \
   --bind ${ANNOT}:/data \
   --bind ${F2_DB}:/f2_db \
-  --bind ${AUGUSTUS_CONFIG}:/opt/augustus_config \
+  --bind ${AUGUSTUS_CONFIG}:/opt/augustus/config \
   --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
-  --env AUGUSTUS_CONFIG_PATH=/opt/augustus_config \
+  --bind ~/.gm_key:/root/.gm_key \
+  --env AUGUSTUS_CONFIG_PATH=/opt/augustus/config \
   --env FUNANNOTATE2_DB=/f2_db \
   ${F2_CONTAINER} \
   funannotate2 predict \
@@ -117,12 +122,13 @@ squeue -u ${USER}
 | `-s` | `"Peltaster fructicola"` | Species name for locus tags and output naming |
 | `--strain` | `LNHT1506` | Strain identifier |
 | `--locus-tag` | `PELF` | Species-specific locus tag prefix; required unique for NCBI submission |
-| `--bam` | `Pf_rnaseq.bam` | Coordinate-sorted RNA-seq BAM from Module 4b for splice hints and UTR refinement |
+| `--bam` | `Pf_rnaseq.bam` | Coordinate-sorted RNA-seq BAM from Module 4 Step 2 for splice hints and UTR refinement |
 | `--bam-library` | `RF` | dUTP/reverse-stranded library orientation (provisional — verify with RSeQC if needed) |
 | `-ps` | `uniprot_sprot.fasta` | UniProt/Swiss-Prot proteins for miniprot cross-species homology alignment |
-| `-ts` | `Pf_transcripts.fasta` | StringTie transcripts from Module 4b for same-species exon boundary evidence |
+| `-ts` | `Pf_transcripts.fasta` | StringTie transcripts from Module 4 Step 2 for same-species exon boundary evidence |
 | `--min-intron` | `40` | Excludes spurious very short intron calls inconsistent with *P. fructicola*'s 50 bp median intron |
 | `--cpus` | `16` | Parallel threads for ab initio predictors and alignment steps |
+
 ---
 
 ## Step 3: Inspect Prediction Output

@@ -13,33 +13,35 @@ predicted protein sequences against multiple curated databases to assign:
 - **Enzyme families:** dbCAN (CAZymes — carbohydrate-active enzymes)
 - **Characterized proteins:** UniProtKB/Swiss-Prot (manually reviewed)
 - **Proteases:** MEROPS (protease families and clans)
-- **Secretome:** SignalP 6 (signal peptide prediction — available in this installation)
+- **Secretome:** SignalP 6 (signal peptide prediction — baked into the container)
 - **Conserved orthologs:** BUSCOlite (for completeness tracking)
 
 Two additional tools extend the functional annotation further:
 
 - **InterProScan:** the most comprehensive protein signature database,
-  integrating 13 member databases (Pfam, TIGRFAM, PANTHER, SUPERFAMILY,
-  CDD, etc.) and assigning Gene Ontology (GO) terms
+  integrating 17 member databases (Pfam, NCBIfam, PANTHER, SUPERFAMILY,
+  CDD, Gene3D, HAMAP, SMART, SFLD, and others) and assigning Gene Ontology
+  (GO) terms. The shared installation at `${SHARED_IPS}` includes all
+  databases pre-configured and ready to use.
 - **EggNOG-mapper:** orthology-based functional annotation that transfers
   GO terms, KEGG pathways, COG categories, and gene names from characterized
-  orthologs in the EggNOG5 database
+  orthologs in the EggNOG5 database. The shared installation at
+  `${SHARED_EGGNOG}` includes the container and the full reference database.
 
 Together, these three annotation layers provide complementary and largely
 independent evidence for gene function.
 
-> **SignalP 6 is included in this class installation** at
-> `${SHARED_F2}/signalp-6-package/`. This tool predicts signal peptides
-> and identifies secreted proteins — an important functional class for a
-> fungal pathogen. It is bound into the container automatically using the
-> standard bind pattern.
+> **SignalP 6** model weights are baked into the `funannotate2.sif`
+> container — no bind-mount is required. The tool predicts signal peptides
+> and identifies secreted proteins, which is an important functional class
+> for a fungal pathogen.
 
 ---
 
 ## Learning Objectives
 
 - Run `funannotate2 annotate` to assign core functional annotations
-- Run InterProScan for domain and GO term annotation
+- Run InterProScan for domain and GO term annotation against 17 databases
 - Run EggNOG-mapper for orthology-based functional transfer
 - Integrate InterProScan and EggNOG results into the Funannotate2 output
 - Inspect the final annotated gene set and interpret functional categories
@@ -77,10 +79,8 @@ AUGUSTUS_CONFIG=${ANNOT}/augustus_config
 apptainer exec \
   --bind ${ANNOT}:/data \
   --bind ${F2_DB}:/f2_db \
-  --bind ${AUGUSTUS_CONFIG}:/opt/augustus_config \
-  --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
-  --bind ${SHARED_F2}/signalp-6-package:/signalp-6-package \
-  --env AUGUSTUS_CONFIG_PATH=/opt/augustus_config \
+  --bind ${AUGUSTUS_CONFIG}:/opt/augustus/config \
+  --env AUGUSTUS_CONFIG_PATH=/opt/augustus/config \
   --env FUNANNOTATE2_DB=/f2_db \
   ${F2_CONTAINER} \
   funannotate2 annotate \
@@ -98,13 +98,17 @@ cd ${ANNOT}
 sbatch ${ANNOT}/scripts/06a_f2_annotate.sh
 ```
 
+> **Note:** `funannotate2 annotate` does not call GeneMark, so the
+> `gmes_linux_64_4` and `.gm_key` binds are not needed here.
+
 ---
 
 ## Step 2: Run InterProScan
 
-InterProScan searches predicted proteins against 13 integrated protein
-signature databases and assigns Gene Ontology (GO) terms. Expect
-**2–6 hours** for ~8,000 proteins.
+InterProScan searches predicted proteins against 17 integrated protein
+signature databases and assigns Gene Ontology (GO) terms. The container
+and all databases are pre-installed in the shared class directory —
+no setup is required. Expect **2–6 hours** for ~8,000 proteins.
 
 ```bash
 cat > ${ANNOT}/scripts/06b_interproscan.sh << 'EOF'
@@ -120,27 +124,48 @@ cat > ${ANNOT}/scripts/06b_interproscan.sh << 'EOF'
 
 set -euo pipefail
 
+# ── Paths ─────────────────────────────────────────────────────────────────────
 user_name=Jonathan
-
-CONTAINERS=/fs/scratch/PAS3260/${user_name}/Annotation/containers
 ANNOT=/fs/scratch/PAS3260/${user_name}/Annotation
+SHARED_IPS=/fs/scratch/PAS3260/Team_Project/Containers/InterProScan
+SIF=${SHARED_IPS}/interproscan_5.77-108.0.sif
+IPS_DATA=${SHARED_IPS}/data
 
+# ── Output setup ──────────────────────────────────────────────────────────────
 mkdir -p ${ANNOT}/03_iprscan
 
+# Node-local temp — avoid overriding system $TMPDIR used by Java internally
+JOB_TMP=/tmp/ips_${SLURM_JOB_ID}
+mkdir -p ${JOB_TMP}
+
+# ── Input ─────────────────────────────────────────────────────────────────────
 PROTEINS=$(ls ${ANNOT}/02_funannotate/predict_results/*.proteins.fa | head -1)
 echo "Input proteins: ${PROTEINS}"
+echo "Container:      ${SIF}"
+echo "IPS data:       ${IPS_DATA}"
+echo "Job started:    $(date)"
 
+# ── Applications — 17 databases confirmed present in shared data directory ────
+# TMHMM excluded: the standard DTU binary is incompatible with IPS 5.77
+# (IPS 5.77 requires a patched binary not distributed by DTU).
+# Transmembrane topology is covered by Phobius, which is included.
+APPS=AntiFam,CDD,FunFam,Gene3D,HAMAP,NCBIfam,PANTHER,Pfam,Phobius,PIRSF,PIRSR,PRINTS,ProSitePatterns,ProSiteProfiles,SFLD,SMART,SUPERFAMILY
+
+# ── Run InterProScan ──────────────────────────────────────────────────────────
 apptainer exec \
   --bind ${ANNOT}:/data \
-  ${CONTAINERS}/interproscan_5.73.sif \
-  interproscan.sh \
+  --bind ${IPS_DATA}:/opt/interproscan/data \
+  --bind ${SHARED_IPS}/interproscan.properties:/opt/interproscan/interproscan.properties \
+  ${SIF} \
+  /opt/interproscan/interproscan.sh \
     -i /data/02_funannotate/predict_results/$(basename ${PROTEINS}) \
     -o /data/03_iprscan/Pf_interproscan.xml \
     -f XML \
-    -appl Pfam,TIGRFAM,PANTHER,CDD,SUPERFAMILY,Gene3D \
+    -appl ${APPS} \
     -goterms \
     -iprlookup \
-    --cpu 16 \
+    --cpu ${SLURM_NTASKS_PER_NODE} \
+    --tempdir ${JOB_TMP} \
     -dp
 
 echo "=== InterProScan complete: $(date) ==="
@@ -151,19 +176,48 @@ cd ${ANNOT}
 sbatch ${ANNOT}/scripts/06b_interproscan.sh
 ```
 
-**Key InterProScan flags:**
+| Flag | Value in script | Purpose |
+|------|----------------|---------|
+| `-i` | `predict_results/*.proteins.fa` | Input protein FASTA file from Funannotate2 gene prediction |
+| `-o` | `03_iprscan/Pf_interproscan.xml` | Output file path and base name |
+| `-f` | `XML` | Output format; XML is required for Funannotate2 `annotate` integration |
+| `-appl` | `AntiFam,CDD,FunFam,...` | Comma-separated list of member databases to search against |
+| `-goterms` | *(flag only)* | Map matched signatures to Gene Ontology (GO) terms |
+| `-iprlookup` | *(flag only)* | Add InterPro entry accessions and descriptions to output |
+| `-dp` | *(flag only)* | Disable pre-calculated match lookup; forces local computation (recommended for non-model organisms) |
+| `--cpu` | `${SLURM_NTASKS_PER_NODE}` | Number of parallel CPU cores to use; dynamically set from SLURM allocation |
+| `--tempdir` | `/tmp/ips_${SLURM_JOB_ID}` | Directory for temporary files; node-local `/tmp` avoids shared filesystem I/O bottlenecks |
 
-| Flag | Purpose |
-|------|---------|
-| `-appl` | Applications to run (comma-separated) |
-| `-goterms` | Map matched signatures to GO terms |
-| `-iprlookup` | Add InterPro entry descriptions |
-| `-dp` | Disable pre-calculated match lookup (recommended for novel organisms) |
-| `-f XML` | Output format required for Funannotate2 integration |
+Databases used in this run:
+
+| Database | Version | Type | What it detects |
+|----------|---------|------|-----------------|
+| **AntiFam** | 8.0 | HMM profiles | Spurious protein predictions; flags false-positive ORFs with homology to non-coding RNAs |
+| **CDD** | 3.21 | RPS-BLAST profiles | NCBI conserved domain database; identifies functional domains and sites from multiple source databases (Pfam, SMART, COG, etc.) |
+| **FunFam** | 4.3.0 | HMM profiles | Functional Families within CATH structural superfamilies; sub-classifies domains to predict specific molecular function |
+| **Gene3D** | 4.3.0 | HMM profiles | Structural domains based on the CATH protein structure classification; assigns sequences to known 3D structural superfamilies |
+| **HAMAP** | 2025_01 | HMM profiles | High-quality manually curated profiles for bacterial, archaeal, and plastid proteins; strong functional annotation in well-characterized families |
+| **NCBIfam** | 18.0 | HMM profiles | NCBI-curated equivalents of TIGRFAMs; identifies protein families with precise functional or taxonomic specificity |
+| **PANTHER** | 19.0 | HMM profiles | Large-scale family and subfamily classification linked to evolutionary history and GO annotations; broad phylogenetic coverage |
+| **Pfam** | 38.1 | HMM profiles | The most widely used protein family database; covers domains, families, and repeats across all kingdoms of life |
+| **Phobius** | 1.01 | Signal prediction | Combined transmembrane topology and signal peptide predictor; distinguishes genuine signal peptides from transmembrane helices |
+| **PIRSF** | 3.10 | HMM profiles | Protein Information Resource SuperFamilies; whole-protein classification capturing evolutionary relationships at the family level |
+| **PIRSR** | 2025_05 | HMM profiles | PIR Site Rules; detects functionally important residue-level features (active sites, binding sites) within PIRSF families |
+| **PRINTS** | 42.0 | Fingerprints | Protein family fingerprints composed of conserved motif groups; useful for detecting distant homologs not captured by single-domain models |
+| **ProSitePatterns** | 2025_01 | Regex patterns | Short, highly conserved sequence motifs linked to specific biochemical functions (e.g., active sites, post-translational modification sites) |
+| **ProSiteProfiles** | 2025_01 | Scoring profiles | Generalized profiles for protein domains and families from PROSITE; more sensitive than patterns for detecting divergent members |
+| **SFLD** | 4 | HMM profiles | Structure-Function Linkage Database; classifies enzymes by mechanistic and structural features, linking sequence to reaction chemistry |
+| **SMART** | 9.0 | HMM profiles | Focuses on signaling, extracellular, and chromatin-associated domains; particularly valuable for eukaryotic domain architecture analysis |
+| **SUPERFAMILY** | 1.75 | HMM profiles | Assigns sequences to SCOP structural superfamilies using hidden Markov models; provides evolutionary and structural context for domains |
 
 ---
 
 ## Step 3: Run EggNOG-mapper
+
+EggNOG-mapper assigns functional annotations by finding the best ortholog
+in the EggNOG5 database and transferring its GO terms, KEGG pathways, COG
+categories, and gene name. Both the container and the reference database
+are pre-installed in the shared class directory — no setup is required.
 
 ```bash
 cat > ${ANNOT}/scripts/06c_eggnog.sh << 'EOF'
@@ -181,26 +235,30 @@ set -euo pipefail
 
 user_name=Jonathan
 
-CONTAINERS=/fs/scratch/PAS3260/${user_name}/Annotation/containers
 ANNOT=/fs/scratch/PAS3260/${user_name}/Annotation
-EGGNOG_DB=/fs/scratch/PAS3260/Team_Project/Containers/Funannotate2/eggnog_db
+SHARED_EGGNOG=/fs/scratch/PAS3260/Team_Project/Containers/eggNOG
+EGGNOG_SIF=${SHARED_EGGNOG}/eggnog_mapper_2.1.13.sif
+EGGNOG_DB=${SHARED_EGGNOG}/eggnog_db
 
 mkdir -p ${ANNOT}/04_eggnog
 
 PROTEINS=$(ls ${ANNOT}/02_funannotate/predict_results/*.proteins.fa | head -1)
 echo "Input proteins: ${PROTEINS}"
+echo "Container:      ${EGGNOG_SIF}"
+echo "Database:       ${EGGNOG_DB}"
+echo "Job started:    $(date)"
 
 apptainer exec \
   --bind ${ANNOT}:/data \
   --bind ${EGGNOG_DB}:/eggnog_db \
-  ${CONTAINERS}/eggnog_mapper_2.1.13.sif \
+  ${EGGNOG_SIF} \
   emapper.py \
     -i /data/02_funannotate/predict_results/$(basename ${PROTEINS}) \
     -o Pf_eggnog \
     --output_dir /data/04_eggnog \
     --data_dir /eggnog_db \
     --tax_scope Fungi \
-    --go_evidence non_electronic \
+    --go_evidence all \
     --target_orthologs all \
     --seed_ortholog_evalue 0.001 \
     --seed_ortholog_score 60 \
@@ -220,7 +278,9 @@ sbatch ${ANNOT}/scripts/06c_eggnog.sh
 ## Step 4: Integrate InterProScan and EggNOG into Funannotate2
 
 After both external annotation tools finish, integrate their results
-back using `funannotate2-addons` (`f2a`):
+back using `funannotate2-addons` (`f2a`). The `--parse` flag tells each
+`f2a` command to skip re-running the tool and go straight to parsing the
+pre-computed output file.
 
 ```bash
 cat > ${ANNOT}/scripts/06d_integrate_annotations.sh << 'EOF'
@@ -236,15 +296,14 @@ cat > ${ANNOT}/scripts/06d_integrate_annotations.sh << 'EOF'
 
 set -euo pipefail
 
-user_name=${USER}
-
+user_name=Jonathan
 ANNOT=/fs/scratch/PAS3260/${user_name}/Annotation
 SHARED_F2=/fs/scratch/PAS3260/Team_Project/Containers/Funannotate2
 F2_CONTAINER=${SHARED_F2}/funannotate2.sif
 F2_DB=${SHARED_F2}/databases
 AUGUSTUS_CONFIG=${ANNOT}/augustus_config
 
-# Parse InterProScan XML results
+echo "=== Step 1: Parse InterProScan XML results: $(date) ==="
 apptainer exec \
   --bind ${ANNOT}:/data \
   --bind ${F2_DB}:/f2_db \
@@ -252,10 +311,10 @@ apptainer exec \
   ${F2_CONTAINER} \
   f2a iprscan \
     -i /data/02_funannotate \
-    --iprscan_xml /data/03_iprscan/Pf_interproscan.xml \
+    --parse /data/03_iprscan/Pf_interproscan.xml \
     --cpus 4
 
-# Parse EggNOG results
+echo "=== Step 2: Parse EggNOG-mapper results: $(date) ==="
 apptainer exec \
   --bind ${ANNOT}:/data \
   --bind ${F2_DB}:/f2_db \
@@ -263,17 +322,15 @@ apptainer exec \
   ${F2_CONTAINER} \
   f2a emapper \
     -i /data/02_funannotate \
-    --emapper_annotations /data/04_eggnog/Pf_eggnog.emapper.annotations \
+    --parse /data/04_eggnog/Pf_eggnog.emapper.annotations \
     --cpus 4
 
-# Re-run funannotate2 annotate incorporating all external annotations
+echo "=== Step 3: Re-run funannotate2 annotate with all evidence: $(date) ==="
 apptainer exec \
   --bind ${ANNOT}:/data \
   --bind ${F2_DB}:/f2_db \
-  --bind ${AUGUSTUS_CONFIG}:/opt/augustus_config \
-  --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
-  --bind ${SHARED_F2}/signalp-6-package:/signalp-6-package \
-  --env AUGUSTUS_CONFIG_PATH=/opt/augustus_config \
+  --bind ${AUGUSTUS_CONFIG}:/opt/augustus/config \
+  --env AUGUSTUS_CONFIG_PATH=/opt/augustus/config \
   --env FUNANNOTATE2_DB=/f2_db \
   ${F2_CONTAINER} \
   funannotate2 annotate \
@@ -383,7 +440,7 @@ grep -v "^#" ${ANNOTATE_DIR}/*.gff3 | \
 
 ## Step 7: Explore the Secretome
 
-SignalP 6 (pre-installed in the shared container) predicts signal peptides,
+SignalP 6 (baked into the shared container) predicts signal peptides,
 identifying proteins likely to be secreted — a key functional class for
 a surface-colonizing fungus:
 
