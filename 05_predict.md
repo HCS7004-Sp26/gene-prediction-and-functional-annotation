@@ -204,15 +204,14 @@ cat > ${ANNOT}/scripts/05c_busco_predict.sh << 'EOF'
 
 set -euo pipefail
 
-user_name=${USER}
+user_name=Jonathan
 
 CONTAINERS=/fs/scratch/PAS3260/${user_name}/Annotation/containers
 ANNOT=/fs/scratch/PAS3260/${user_name}/Annotation
-BUSCO_DL=${ANNOT}/busco_downloads
+BUSCO_DL=/fs/scratch/PAS3260/${user_name}/Peltaster/busco_downloads
 
 OUTDIR=${ANNOT}/02_funannotate/busco_predict
 mkdir -p ${OUTDIR}
-mkdir -p ${BUSCO_DL}
 cd ${OUTDIR}
 
 PROTEINS=$(ls ${ANNOT}/02_funannotate/predict_results/*.proteins.fa | head -1)

@@ -66,6 +66,8 @@ cat > ${ANNOT}/scripts/06a_f2_annotate.sh << 'EOF'
 
 set -euo pipefail
 
+user_name=Jonathan
+
 ANNOT=/fs/scratch/PAS3260/${user_name}/Annotation
 SHARED_F2=/fs/scratch/PAS3260/Team_Project/Containers/Funannotate2
 F2_CONTAINER=${SHARED_F2}/funannotate2.sif
@@ -79,16 +81,16 @@ apptainer exec \
   --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
   --bind ${SHARED_F2}/signalp-6-package:/signalp-6-package \
   --env AUGUSTUS_CONFIG_PATH=/opt/augustus_config \
+  --env FUNANNOTATE2_DB=/f2_db \
   ${F2_CONTAINER} \
   funannotate2 annotate \
     -i /data/02_funannotate \
-    --database /f2_db \
-    --busco_db dothideomycetes_odb12 \
+    -s "Peltaster fructicola" \
+    -st LNHT1506 \
+    --busco-lineage dothideomycetes_odb12 \
     --cpus 12
 
 echo "=== funannotate2 annotate complete: $(date) ==="
-echo ""
-echo "Annotation output files:"
 ls -lh ${ANNOT}/02_funannotate/annotate_results/
 EOF
 
@@ -118,6 +120,8 @@ cat > ${ANNOT}/scripts/06b_interproscan.sh << 'EOF'
 
 set -euo pipefail
 
+user_name=Jonathan
+
 CONTAINERS=/fs/scratch/PAS3260/${user_name}/Annotation/containers
 ANNOT=/fs/scratch/PAS3260/${user_name}/Annotation
 
@@ -128,7 +132,7 @@ echo "Input proteins: ${PROTEINS}"
 
 apptainer exec \
   --bind ${ANNOT}:/data \
-  ${CONTAINERS}/interproscan_5.72.sif \
+  ${CONTAINERS}/interproscan_5.73.sif \
   interproscan.sh \
     -i /data/02_funannotate/predict_results/$(basename ${PROTEINS}) \
     -o /data/03_iprscan/Pf_interproscan.xml \
@@ -175,9 +179,11 @@ cat > ${ANNOT}/scripts/06c_eggnog.sh << 'EOF'
 
 set -euo pipefail
 
+user_name=Jonathan
+
 CONTAINERS=/fs/scratch/PAS3260/${user_name}/Annotation/containers
 ANNOT=/fs/scratch/PAS3260/${user_name}/Annotation
-EGGNOG_DB=/fs/scratch/PAS3260/${user_name}/Annotation/eggnog_db
+EGGNOG_DB=/fs/scratch/PAS3260/Team_Project/Containers/Funannotate2/eggnog_db
 
 mkdir -p ${ANNOT}/04_eggnog
 
@@ -187,7 +193,7 @@ echo "Input proteins: ${PROTEINS}"
 apptainer exec \
   --bind ${ANNOT}:/data \
   --bind ${EGGNOG_DB}:/eggnog_db \
-  ${CONTAINERS}/eggnog_mapper_2.1.12.sif \
+  ${CONTAINERS}/eggnog_mapper_2.1.13.sif \
   emapper.py \
     -i /data/02_funannotate/predict_results/$(basename ${PROTEINS}) \
     -o Pf_eggnog \
@@ -223,12 +229,14 @@ cat > ${ANNOT}/scripts/06d_integrate_annotations.sh << 'EOF'
 #SBATCH --job-name=f2_integrate
 #SBATCH --output=logs/f2_integrate_%j.out
 #SBATCH --error=logs/f2_integrate_%j.err
-#SBATCH --time=01:00:00
+#SBATCH --time=02:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
 #SBATCH --mem=16G
 
 set -euo pipefail
+
+user_name=${USER}
 
 ANNOT=/fs/scratch/PAS3260/${user_name}/Annotation
 SHARED_F2=/fs/scratch/PAS3260/Team_Project/Containers/Funannotate2
@@ -236,34 +244,26 @@ F2_CONTAINER=${SHARED_F2}/funannotate2.sif
 F2_DB=${SHARED_F2}/databases
 AUGUSTUS_CONFIG=${ANNOT}/augustus_config
 
-# Parse InterProScan XML → Funannotate2 TSV
+# Parse InterProScan XML results
 apptainer exec \
   --bind ${ANNOT}:/data \
   --bind ${F2_DB}:/f2_db \
-  --bind ${AUGUSTUS_CONFIG}:/opt/augustus_config \
-  --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
-  --bind ${SHARED_F2}/signalp-6-package:/signalp-6-package \
-  --env AUGUSTUS_CONFIG_PATH=/opt/augustus_config \
+  --env FUNANNOTATE2_DB=/f2_db \
   ${F2_CONTAINER} \
   f2a iprscan \
     -i /data/02_funannotate \
     --iprscan_xml /data/03_iprscan/Pf_interproscan.xml \
-    -o /data/02_funannotate/annotate_misc \
     --cpus 4
 
-# Parse EggNOG output → Funannotate2 TSV
+# Parse EggNOG results
 apptainer exec \
   --bind ${ANNOT}:/data \
   --bind ${F2_DB}:/f2_db \
-  --bind ${AUGUSTUS_CONFIG}:/opt/augustus_config \
-  --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
-  --bind ${SHARED_F2}/signalp-6-package:/signalp-6-package \
-  --env AUGUSTUS_CONFIG_PATH=/opt/augustus_config \
+  --env FUNANNOTATE2_DB=/f2_db \
   ${F2_CONTAINER} \
   f2a emapper \
     -i /data/02_funannotate \
     --emapper_annotations /data/04_eggnog/Pf_eggnog.emapper.annotations \
-    -o /data/02_funannotate/annotate_misc \
     --cpus 4
 
 # Re-run funannotate2 annotate incorporating all external annotations
@@ -274,15 +274,12 @@ apptainer exec \
   --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
   --bind ${SHARED_F2}/signalp-6-package:/signalp-6-package \
   --env AUGUSTUS_CONFIG_PATH=/opt/augustus_config \
+  --env FUNANNOTATE2_DB=/f2_db \
   ${F2_CONTAINER} \
   funannotate2 annotate \
     -i /data/02_funannotate \
-    --database /f2_db \
-    --busco_db dothideomycetes_odb12 \
-    --iprscan /data/02_funannotate/annotate_misc/iprscan_annotations.tsv \
-    --eggnog  /data/02_funannotate/annotate_misc/eggnog_annotations.tsv \
-    --cpus 4 \
-    --force
+    --busco-lineage dothideomycetes_odb12 \
+    --cpus 4
 
 echo "=== Integration complete: $(date) ==="
 ls -lh ${ANNOT}/02_funannotate/annotate_results/
