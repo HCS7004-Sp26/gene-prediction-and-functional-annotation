@@ -10,7 +10,7 @@ interconnected set of intermediate files. A well-organized directory structure
 is not optional — Funannotate2 expects specific input locations and writes
 output to a consistent folder hierarchy. Before any analysis, we establish
 that structure, pull the utility containers each student needs, and configure
-access to the shared Funannotate2 resources pre-installed for this class.
+access to the shared resources pre-installed for this class.
 
 > **Relationship to the previous tutorial:** The genome assembly lives at
 > `/fs/scratch/PAS3260/${user_name}/Peltaster/00_data/genome/`.
@@ -23,8 +23,8 @@ access to the shared Funannotate2 resources pre-installed for this class.
 
 - Set the `user_name` variable that customizes every path in this tutorial
 - Create the annotation project directory tree
-- Pull utility containers (SRA Toolkit, Trimmomatic, FastQC, InterProScan,
-  EggNOG-mapper) to your personal containers directory
+- Pull utility containers (SRA Toolkit, Trimmomatic, FastQC, HISAT2,
+  StringTie, gffread, BUSCO) to your personal containers directory
 - Copy the shared `augustus_config` to your working directory
 - Verify all containers and shared resources are accessible
 - Set persistent environment variables for the project
@@ -62,8 +62,11 @@ export F2_DB=${SHARED_F2}/databases
 # Your own writable augustus_config (copied from shared in Step 5)
 export AUGUSTUS_CONFIG=${ANNOT}/augustus_config
 
-# EggNOG-mapper database (downloaded per-student in Step 7)
-export EGGNOG_DB=${ANNOT}/eggnog_db
+# Shared InterProScan container and databases (pre-installed, read-only)
+export SHARED_IPS=/fs/scratch/PAS3260/Team_Project/Containers/InterProScan
+
+# Shared EggNOG-mapper container and database (pre-installed, read-only)
+export SHARED_EGGNOG=/fs/scratch/PAS3260/Team_Project/Containers/eggNOG
 ```
 
 Confirm the shared resources are accessible:
@@ -76,6 +79,17 @@ ls -lh ${SHARED_F2}/
 # augustus_config/
 # gmes_linux_64_4/
 # signalp-6-package/
+
+ls -lh ${SHARED_IPS}/
+# Expected output:
+# interproscan_5.77-108.0.sif
+# interproscan.properties
+# data/
+
+ls -lh ${SHARED_EGGNOG}/
+# Expected output:
+# eggnog_mapper_2.1.13.sif
+# eggnog_db/
 ```
 
 ---
@@ -112,10 +126,12 @@ tree -d ${ANNOT}
 ├── 04_eggnog/           ← EggNOG-mapper output and parsed results
 ├── augustus_config/     ← your writable copy of the Augustus config
 ├── containers/          ← Apptainer .sif images (utility tools)
-├── eggnog_db/           ← EggNOG-mapper reference database
 ├── logs/                ← SLURM stdout/stderr for every job
 └── scripts/             ← all SLURM batch scripts
 ```
+
+> **Note:** The EggNOG-mapper database and InterProScan databases are shared
+> class resources — no per-student download is required.
 
 ---
 
@@ -173,7 +189,8 @@ export SHARED_F2=/fs/scratch/PAS3260/Team_Project/Containers/Funannotate2
 export F2_CONTAINER=\${SHARED_F2}/funannotate2.sif
 export F2_DB=\${SHARED_F2}/databases
 export AUGUSTUS_CONFIG=/fs/scratch/PAS3260/${user_name}/Annotation/augustus_config
-export EGGNOG_DB=/fs/scratch/PAS3260/${user_name}/Annotation/eggnog_db
+export SHARED_IPS=/fs/scratch/PAS3260/Team_Project/Containers/InterProScan
+export SHARED_EGGNOG=/fs/scratch/PAS3260/Team_Project/Containers/eggNOG
 EOF
 
 source ~/.bashrc
@@ -184,15 +201,18 @@ echo "ANNOT          = ${ANNOT}"
 echo "F2_CONTAINER   = ${F2_CONTAINER}"
 echo "F2_DB          = ${F2_DB}"
 echo "AUGUSTUS_CONFIG= ${AUGUSTUS_CONFIG}"
+echo "SHARED_IPS     = ${SHARED_IPS}"
+echo "SHARED_EGGNOG  = ${SHARED_EGGNOG}"
 ```
 
 ---
 
 ## Step 7: Pull Utility Containers
 
-The Funannotate2 container is pre-built and shared. You only need to pull
-the five utility containers used for data download, read QC, and functional
-annotation. Always `cd ${ANNOT}` before submitting so SLURM logs land
+The Funannotate2, InterProScan, and EggNOG-mapper containers are shared
+class resources — **do not pull these**. You only need to pull the utility
+containers used for data download, read QC, alignment, and assembly
+assessment. Always `cd ${ANNOT}` before submitting so SLURM logs land
 in `${ANNOT}/logs/`.
 
 ```bash
@@ -229,36 +249,25 @@ apptainer pull \
   ${CONTAINERS}/fastqc_0.12.1.sif \
   oras://community.wave.seqera.io/library/fastqc:0.12.1--104d26ddd9519960
 
-# ---- HISAT2 (Hirarchical Indexing for Spliced Alignment of Transcripts) ----
-# ---- should include samtools 
+# ---- HISAT2 + SAMtools (spliced alignment) ----
 apptainer pull \
   ${CONTAINERS}/hisat2_2.2.2.sif \
   oras://community.wave.seqera.io/library/hisat2_samtools:7187f9e84cdad061
 
-# ---- StringTie (trasncriptome structure recovery and abudance estimation) ----
+# ---- StringTie (transcriptome assembly and abundance estimation) ----
 apptainer pull \
   ${CONTAINERS}/stringtie_3.0.3.sif \
   oras://community.wave.seqera.io/library/stringtie:3.0.3--5970e7d4cfb4e671
 
-# ---- gffread (validation, filtering, conversions, and varios operations on GFF files) ----
+# ---- gffread (GFF file operations and format conversion) ----
 apptainer pull \
   ${CONTAINERS}/gffread_0.12.7.sif \
   oras://community.wave.seqera.io/library/gffread:0.12.7--b08e770b84a4a126
 
-# ---- BUSCO (Benchmarking Universal Single-Copy Orthologs) ----
+# ---- BUSCO (assembly completeness assessment) ----
 apptainer pull \
   ${CONTAINERS}/busco_6.0.0.sif \
   oras://community.wave.seqera.io/library/busco:6.0.0--7def4b2c35a1aed1
-
-# ---- InterProScan (protein domain annotation) ----
-apptainer pull \
-  ${CONTAINERS}/interproscan_5.73.sif \
-  docker://quay.io/nf-core/interproscan:5.73-104.0
-
-# ---- EggNOG-mapper (orthology-based functional annotation) ----
-apptainer pull \
-  ${CONTAINERS}/eggnog_mapper_2.1.13.sif \
-  oras://community.wave.seqera.io/library/eggnog-mapper:2.1.13--3707cb2d1fc34e7a
 
 echo ""
 echo "=== All utility containers pulled ==="
@@ -283,7 +292,7 @@ Once the pull job completes, verify each container:
 
 ```bash
 echo "=== Shared Funannotate2 container ==="
-echo -n "funannotate2:   "
+echo -n "funannotate2:        "
 apptainer exec \
   --bind ${F2_DB}:/f2_db \
   --bind ${AUGUSTUS_CONFIG}:/opt/augustus_config \
@@ -292,42 +301,50 @@ apptainer exec \
   funannotate2 --version 2>&1 | head -1
 
 echo ""
+echo "=== Shared InterProScan container ==="
+echo -n "interproscan:        "
+apptainer exec \
+  --bind ${SHARED_IPS}/data:/opt/interproscan/data \
+  ${SHARED_IPS}/interproscan_5.77-108.0.sif \
+  interproscan.sh --version 2>&1 | grep -i "interproscan" | head -1
+
+echo ""
+echo "=== Shared EggNOG-mapper container ==="
+echo -n "eggnog-mapper:       "
+apptainer exec \
+  --bind ${SHARED_EGGNOG}/eggnog_db:/eggnog_db \
+  ${SHARED_EGGNOG}/eggnog_mapper_2.1.13.sif \
+  emapper.py --version 2>&1 | head -4 | tail -1
+
+echo ""
 echo "=== Utility containers ==="
-echo -n "sra-tools:      "
+echo -n "sra-tools:           "
 apptainer exec ${CONTAINERS}/sratools_3.2.1.sif \
   fastq-dump --version 2>&1 | grep "fastq-dump" | head -1
 
-echo -n "trimmomatic:    "
+echo -n "trimmomatic:         "
 apptainer exec ${CONTAINERS}/trimmomatic_0.40.sif \
   trimmomatic -version 2>&1 | head -2 | tail -1
 
-echo -n "fastqc:         "
+echo -n "fastqc:              "
 apptainer exec ${CONTAINERS}/fastqc_0.12.1.sif \
   fastqc --version 2>&1 | head -2 | tail -1
 
-echo -n "HISAT2:         "
+echo -n "HISAT2:              "
 apptainer exec ${CONTAINERS}/hisat2_2.2.2.sif \
-  hisat2 --version 2>&1 | head -2 | tail -1
+  hisat2 --version 2>&1 | head -1
 
-echo -n "StringTie:         "
-apptainer exec ${CONTAINERS}/stringtie_3.0.3.sif  \
-  stringtie --version 2>&1 | head -2 | tail -1
+echo -n "stringtie:           "
+apptainer exec ${CONTAINERS}/stringtie_3.0.3.sif \
+  stringtie --version 2>&1 | head -1
 
-echo -n "gffread:         "
-apptainer exec ${CONTAINERS}/gffread_0.12.7.sif  \
-  gffread --version 2>&1 | head -2 | tail -1
+echo -n "gffread:             "
+apptainer exec ${CONTAINERS}/gffread_0.12.7.sif \
+  gffread --version 2>&1 | head -1
 
-echo -n "BUSCO:         "
-apptainer exec ${CONTAINERS}/busco_6.0.0.sif  \
-  busco --version 2>&1 | head -2 | tail -1
-
-echo -n "interproscan:   "
-apptainer exec ${CONTAINERS}/interproscan_5.73.sif \
-  interproscan.sh --version 2>&1 | grep "InterProScan" | head -1
-
-echo -n "eggnog-mapper:  "
-apptainer exec ${CONTAINERS}/eggnog_mapper_2.1.13.sif \
-  emapper.py --version 2>&1 | head -4 | tail -1
+echo -n "BUSCO:               "
+apptainer exec ${CONTAINERS}/busco_6.0.0.sif \
+  busco --version 2>&1 | head -1
 
 echo ""
 echo "Verification complete."
@@ -335,44 +352,27 @@ echo "Verification complete."
 
 ---
 
-## NO LONGER NEEDED: Step 9: Set Up the EggNOG-mapper Database (url invalid, and step not needed since databases are installed in Team Project)
+## Shared Resources Overview
 
-The EggNOG-mapper reference database (~9 GB) is not shared because each
-student needs read-write access during mapping. Download it once to your
-own space:
+The following resources are pre-installed at
+`/fs/scratch/PAS3260/Team_Project/Containers/` and are shared across all
+students. **No download is required for any of these.**
 
-```bash
-mkdir -p ${EGGNOG_DB}
-
-cat > ${ANNOT}/scripts/01b_setup_eggnog.sh << 'EOF'
-#!/bin/bash
-#SBATCH --account=PAS3260
-#SBATCH --job-name=eggnog_db
-#SBATCH --output=logs/eggnog_db_%j.out
-#SBATCH --error=logs/eggnog_db_%j.err
-#SBATCH --time=02:00:00
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=2
-#SBATCH --mem=16G
-
-set -euo pipefail
-
-CONTAINERS=/fs/scratch/PAS3260/${user_name}/Annotation/containers
-EGGNOG_DB=/fs/scratch/PAS3260/${user_name}/Annotation/eggnog_db
-
-apptainer exec \
-  --bind ${EGGNOG_DB}:/eggnog_db \
-  ${CONTAINERS}/eggnog_mapper_2.1.13.sif \
-  download_eggnog_data.py \
-    --data_dir /eggnog_db \
-    -y
-
-echo "EggNOG database download complete."
-ls -lh ${EGGNOG_DB}/
-EOF
-
-cd ${ANNOT}
-sbatch ${ANNOT}/scripts/01b_setup_eggnog.sh
+```
+/fs/scratch/PAS3260/Team_Project/Containers/
+├── Funannotate2/
+│   ├── funannotate2.sif        ← main annotation container
+│   ├── databases/              ← Pfam, dbCAN, UniProt, MEROPS, BUSCO lineages
+│   ├── augustus_config/        ← source for your personal writable copy
+│   ├── gmes_linux_64_4/        ← GeneMark-ES (licensed)
+│   └── signalp-6-package/      ← SignalP 6 (licensed)
+├── InterProScan/
+│   ├── interproscan_5.77-108.0.sif
+│   ├── interproscan.properties ← pre-configured for this cluster
+│   └── data/                   ← all 17 member databases
+└── eggNOG/
+    ├── eggnog_mapper_2.1.13.sif
+    └── eggnog_db/              ← eggNOG5 reference database (~9 GB)
 ```
 
 ---
@@ -425,16 +425,18 @@ calling `sbatch` so SLURM logs land in `${ANNOT}/logs/`.
 #SBATCH --ntasks-per-node=N
 #SBATCH --mem=XG
 
+set -euo pipefail
+
 # ---- Path variables (hardcoded — do not use $user_name inside scripts) ----
+user_name=Jonathan   # ← replace with your OSC username
 ANNOT=/fs/scratch/PAS3260/${user_name}/Annotation
 CONTAINERS=/fs/scratch/PAS3260/${user_name}/Annotation/containers
 SHARED_F2=/fs/scratch/PAS3260/Team_Project/Containers/Funannotate2
 F2_CONTAINER=${SHARED_F2}/funannotate2.sif
 F2_DB=${SHARED_F2}/databases
 AUGUSTUS_CONFIG=${ANNOT}/augustus_config
-EGGNOG_DB=${ANNOT}/eggnog_db
-
-set -euo pipefail
+SHARED_IPS=/fs/scratch/PAS3260/Team_Project/Containers/InterProScan
+SHARED_EGGNOG=/fs/scratch/PAS3260/Team_Project/Containers/eggNOG
 ```
 
 ---
@@ -444,11 +446,13 @@ set -euo pipefail
 - [ ] `echo ${user_name}` prints your OSC username (not empty)
 - [ ] `echo ${ANNOT}` prints `/fs/scratch/PAS3260/<your_username>/Annotation`
 - [ ] `ls ${ANNOT}` shows the full directory tree including `augustus_config/`
-- [ ] `ls ${SHARED_F2}/` lists all five shared resources (`.sif`, `databases/`, etc.)
+- [ ] `ls ${SHARED_F2}/` lists all five shared Funannotate2 resources
+- [ ] `ls ${SHARED_IPS}/` lists the InterProScan `.sif`, `data/`, and `interproscan.properties`
+- [ ] `ls ${SHARED_EGGNOG}/` lists the EggNOG-mapper `.sif` and `eggnog_db/`
 - [ ] `ls ${ANNOT}/augustus_config/` shows the Augustus configuration files
-- [ ] All 5 utility container `.sif` files exist in `${CONTAINERS}`
-- [ ] Funannotate2 container prints a version string (Step 8)
-- [ ] All utility containers print version strings
+- [ ] All 7 utility container `.sif` files exist in `${CONTAINERS}`
+- [ ] Funannotate2, InterProScan, and EggNOG-mapper containers print version strings (Step 8)
+- [ ] All utility containers print version strings (Step 8)
 - [ ] `${ANNOT}/00_genome/Pf_assembly_raw.fasta` exists and has 5 sequences
 
 ---
