@@ -118,6 +118,7 @@ to be downloaded by individual students:
 │   ├── databases/              ← Pfam, dbCAN, UniProt, MEROPS, BUSCO lineages
 │   ├── augustus_config/        ← Augustus species models (read-only master copy)
 │   ├── gmes_linux_64_4/        ← GeneMark-ES (licensed, bound at runtime)
+│   ├── .gm_key                 ← GeneMark-ES license key (shared; bound at runtime)
 │   └── signalp-6-package/      ← SignalP 6 source (weights baked into container)
 ├── InterProScan/
 │   ├── interproscan_5.77-108.0.sif

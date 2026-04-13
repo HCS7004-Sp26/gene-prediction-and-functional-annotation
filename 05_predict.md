@@ -87,7 +87,7 @@ apptainer exec \
   --bind ${F2_DB}:/f2_db \
   --bind ${AUGUSTUS_CONFIG}:/opt/augustus/config \
   --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
-  --bind ~/.gm_key:/root/.gm_key \
+  --bind ${SHARED_F2}/.gm_key:/root/.gm_key \
   --env AUGUSTUS_CONFIG_PATH=/opt/augustus/config \
   --env FUNANNOTATE2_DB=/f2_db \
   ${F2_CONTAINER} \

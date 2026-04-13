@@ -79,6 +79,7 @@ ls -lh ${SHARED_F2}/
 # augustus_config/
 # gmes_linux_64_4/
 # signalp-6-package/   ← source files; SignalP 6 weights are baked into the container
+# .gm_key              ← shared GeneMark-ES license key
 
 ls -lh ${SHARED_IPS}/
 # Expected output:
@@ -366,6 +367,7 @@ students. **No download is required for any of these.**
 │   ├── databases/              ← Pfam, dbCAN, UniProt, MEROPS, BUSCO lineages
 │   ├── augustus_config/        ← source for your personal writable copy
 │   ├── gmes_linux_64_4/        ← GeneMark-ES (licensed; bound at runtime)
+│   ├── .gm_key                 ← GeneMark-ES license key (shared; bound at runtime)
 │   └── signalp-6-package/      ← SignalP 6 source (weights baked into container)
 ├── InterProScan/
 │   ├── interproscan_5.77-108.0.sif
@@ -390,7 +392,7 @@ apptainer exec \
   --bind ${F2_DB}:/f2_db \
   --bind ${AUGUSTUS_CONFIG}:/opt/augustus/config \
   --bind ${SHARED_F2}/gmes_linux_64_4:/gmes_linux_64_4 \
-  --bind ~/.gm_key:/root/.gm_key \
+  --bind ${SHARED_F2}/.gm_key:/root/.gm_key \
   --env AUGUSTUS_CONFIG_PATH=/opt/augustus/config \
   --env FUNANNOTATE2_DB=/f2_db \
   ${F2_CONTAINER} \
@@ -403,7 +405,7 @@ apptainer exec \
 | `${F2_DB}:/f2_db` | Shared annotation databases (Pfam, dbCAN, UniProt, MEROPS) |
 | `${AUGUSTUS_CONFIG}:/opt/augustus/config` | Your writable Augustus config |
 | `gmes_linux_64_4:/gmes_linux_64_4` | GeneMark-ES binary (requires license key) |
-| `~/.gm_key:/root/.gm_key` | GeneMark-ES license key |
+| `${SHARED_F2}/.gm_key:/root/.gm_key` | GeneMark-ES license key (shared — no per-student file needed) |
 
 > **SignalP 6** is baked into the container image — no bind-mount is needed.
 > All input/output paths inside container commands start with `/data/`, `/f2_db/`, etc.
@@ -450,7 +452,7 @@ SHARED_EGGNOG=/fs/scratch/PAS3260/Team_Project/Containers/eggNOG
 - [ ] `echo ${user_name}` prints your OSC username (not empty)
 - [ ] `echo ${ANNOT}` prints `/fs/scratch/PAS3260/<your_username>/Annotation`
 - [ ] `ls ${ANNOT}` shows the full directory tree including `augustus_config/`
-- [ ] `ls ${SHARED_F2}/` lists `funannotate2.sif`, `databases/`, `augustus_config/`, `gmes_linux_64_4/`
+- [ ] `ls ${SHARED_F2}/` lists `funannotate2.sif`, `databases/`, `augustus_config/`, `gmes_linux_64_4/`, `.gm_key`
 - [ ] `ls ${SHARED_IPS}/` lists the InterProScan `.sif`, `data/`, and `interproscan.properties`
 - [ ] `ls ${SHARED_EGGNOG}/` lists the EggNOG-mapper `.sif` and `eggnog_db/`
 - [ ] `ls ${ANNOT}/augustus_config/` shows the Augustus configuration files
